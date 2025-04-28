@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+
+<!--
+This software is released under the GNU General Public License v3.
+Copyright (C) 2025 Maurizio Goina
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+-->
+
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>🎛️ Audio Loop Mixer</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 20px;
+      background: #111;
+      color: #eee;
+    }
+    #dropzone {
+      width: 100%;
+      padding: 40px;
+      border: 2px dashed #00ffffaa;
+      text-align: center;
+      color: #00ffff;
+      margin-bottom: 20px;
+      border-radius: 10px;
+      background: #1b1b1b;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+    #dropzone:hover {
+      background: #222;
+    }
+    #controls {
+      margin-bottom: 20px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 14px;
+      border: none;
+      border-radius: 5px;
+      background: #00bcd4;
+      color: white;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.2s;
+    }
+    button:hover {
+      background: #0097a7;
+      transform: scale(1.05);
+    }
+    button.stop { background: #f44336; }
+    button.stop:hover { background: #d32f2f; }
+    button.toggle-loop { background: #8bc34a; }
+    button.toggle-all-loop { background: #ffc107; }
+    button.solo { background: #9c27b0; }
+    button.delete { background: #ff5722; }
+    button.record { background: #e91e63; }
+    .audio-track {
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 20px;
+      background: #222;
+      box-shadow: 0 2px 5px rgba(0,255,255,0.2);
+    }
+    .slider {
+      width: 100%;
+      margin: 5px 0;
+    }
+    input[type="file"] {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+<h1>🎛️ Audio Loop Mixer</h1>
+
+<div id="controls">
+  <button id="playAll">▶️ Play All</button>
+  <button id="stopAll" class="stop">⏹️ Stop All</button>
+  <button id="toggleAllLoop" class="toggle-all-loop">🔁 All Loop OFF</button>
+  <button id="record" class="record">⏺️ Start Recording</button>
+  <label for="globalVolume">Global Volume</label>
+  <input type="range" id="globalVolume" min="0" max="2" step="0.01" value="1">
+  <button id="fileSelect">📂 Choose Files</button>
+  <input type="file" id="fileInput" multiple accept="audio/*">
+</div>
+
+<div id="dropzone">Drop audio files here or click 📂 Choose Files</div>
+<div id="trackList"></div>
+
+<script>
+const dropzone = document.getElementById('dropzone');
+const trackList = document.getElementById('trackList');
+const playAllBtn = document.getElementById('playAll');
+const stopAllBtn = document.getElementById('stopAll');
+const toggleAllLoopBtn = document.getElementById('toggleAllLoop');
+const fileInput = document.getElementById('fileInput');
+const fileSelect = document.getElementById('fileSelect');
+const recordBtn = document.getElementById('record');
+const globalVolumeSlider = document.getElementById('globalVolume');
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+const globalGainNode = audioCtx.createGain();
+globalGainNode.connect(audioCtx.destination);
+globalGainNode.gain.value = 1;
+
+const tracks = [];
+let isRecording = false;
+let mediaRecorder;
+let recordedChunks = [];
+
+let colorToggle = false;
+function alternatingColor() {
+  colorToggle = !colorToggle;
+  return colorToggle ? '#1f1f1f' : '#2a2a2a';
+}
+
+function createTrack(file) {
+  const reader = new FileReader();
+  reader.onload = async function(ev) {
+    const arrayBuffer = ev.target.result;
+    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+
+    const container = document.createElement('div');
+    container.className = 'audio-track';
+    container.style.background = alternatingColor();
+
+    const title = document.createElement('h3');
+    title.textContent = file.name;
+
+    const volume = document.createElement('input');
+    volume.type = 'range';
+    volume.min = 0;
+    volume.max = 2;
+    volume.step = 0.01;
+    volume.value = 1;
+    volume.className = 'slider';
+
+    const startSlider = document.createElement('input');
+    startSlider.type = 'range';
+    startSlider.className = 'slider';
+    startSlider.min = 0;
+    startSlider.max = audioBuffer.duration;
+    startSlider.step = 0.01;
+    startSlider.value = 0;
+
+    const endSlider = document.createElement('input');
+    endSlider.type = 'range';
+    endSlider.className = 'slider';
+    endSlider.min = 0;
+    endSlider.max = audioBuffer.duration;
+    endSlider.step = 0.01;
+    endSlider.value = audioBuffer.duration;
+
+    const playBtn = document.createElement('button');
+    playBtn.textContent = '▶️ Play';
+
+    const stopBtn = document.createElement('button');
+    stopBtn.textContent = '⏹️ Stop';
+    stopBtn.className = 'stop';
+
+    const loopBtn = document.createElement('button');
+    loopBtn.textContent = '🔁 Loop OFF';
+    loopBtn.className = 'toggle-loop';
+
+    const soloBtn = document.createElement('button');
+    soloBtn.textContent = '🎧 Solo';
+    soloBtn.className = 'solo';
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.textContent = '🗑️ Delete';
+    deleteBtn.className = 'delete';
+
+    container.append(title, volume, startSlider, endSlider, playBtn, stopBtn, loopBtn, soloBtn, deleteBtn);
+    trackList.appendChild(container);
+
+    const track = {
+      audioBuffer,
+      gainNode: audioCtx.createGain(),
+      volume,
+      startSlider,
+      endSlider,
+      loopBtn,
+      soloBtn,
+      source: null,
+      container,
+      isLooping: false,
+      isSolo: false
+    };
+    track.gainNode.connect(globalGainNode);
+
+    function createSource() {
+      const source = audioCtx.createBufferSource();
+      source.buffer = track.audioBuffer;
+      source.connect(track.gainNode);
+      source.loop = track.isLooping;
+      source.loopStart = parseFloat(track.startSlider.value);
+      source.loopEnd = parseFloat(track.endSlider.value);
+      return source;
+    }
+
+    playBtn.onclick = () => {
+      if (track.source) track.source.stop();
+      track.source = createSource();
+      track.gainNode.gain.value = parseFloat(track.volume.value);
+      track.source.start(0, parseFloat(track.startSlider.value));
+    };
+
+    stopBtn.onclick = () => {
+      if (track.source) track.source.stop();
+    };
+
+    loopBtn.onclick = () => {
+      track.isLooping = !track.isLooping;
+      loopBtn.textContent = track.isLooping ? '🔁 Loop ON' : '🔁 Loop OFF';
+    };
+
+    soloBtn.onclick = () => {
+      tracks.forEach(t => {
+        t.gainNode.gain.value = (t === track && !track.isSolo) ? 1 : 0;
+        t.isSolo = false;
+      });
+      track.isSolo = !track.isSolo;
+    };
+
+    deleteBtn.onclick = () => {
+      if (track.source) track.source.stop();
+      track.gainNode.disconnect();
+      container.remove();
+      const index = tracks.indexOf(track);
+      if (index !== -1) tracks.splice(index, 1);
+    };
+
+    volume.oninput = () => {
+      track.gainNode.gain.value = parseFloat(track.volume.value);
+    };
+
+    startSlider.oninput = () => {
+      if (parseFloat(startSlider.value) > parseFloat(endSlider.value)) {
+        endSlider.value = startSlider.value;
+      }
+      if (track.source) {
+        track.source.loopStart = parseFloat(track.startSlider.value);
+        track.source.loopEnd = parseFloat(track.endSlider.value);
+      }
+    };
+
+    endSlider.oninput = () => {
+      if (parseFloat(endSlider.value) < parseFloat(startSlider.value)) {
+        startSlider.value = endSlider.value;
+      }
+      if (track.source) {
+        track.source.loopStart = parseFloat(track.startSlider.value);
+        track.source.loopEnd = parseFloat(track.endSlider.value);
+      }
+    };
+
+    tracks.push(track);
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function startRecording() {
+  const dest = audioCtx.createMediaStreamDestination();
+  globalGainNode.disconnect();
+  globalGainNode.connect(dest);
+  globalGainNode.connect(audioCtx.destination);
+
+  mediaRecorder = new MediaRecorder(dest.stream);
+  mediaRecorder.ondataavailable = e => recordedChunks.push(e.data);
+  mediaRecorder.onstop = saveRecording;
+  recordedChunks = [];
+  mediaRecorder.start();
+}
+
+function stopRecording() {
+  mediaRecorder.stop();
+}
+
+function saveRecording() {
+  const blob = new Blob(recordedChunks, { type: 'audio/webm' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'mix_recording.webm';
+  a.click();
+}
+
+playAllBtn.onclick = () => {
+  const now = audioCtx.currentTime + 0.1;
+  tracks.forEach(track => {
+    if (track.source) track.source.stop();
+    track.source = (function() {
+      const source = audioCtx.createBufferSource();
+      source.buffer = track.audioBuffer;
+      source.connect(track.gainNode);
+      source.loop = track.isLooping;
+      source.loopStart = parseFloat(track.startSlider.value);
+      source.loopEnd = parseFloat(track.endSlider.value);
+      return source;
+    })();
+    track.gainNode.gain.value = parseFloat(track.volume.value);
+    track.source.start(now, parseFloat(track.startSlider.value));
+  });
+};
+
+stopAllBtn.onclick = () => {
+  tracks.forEach(track => {
+    if (track.source) track.source.stop();
+  });
+};
+
+toggleAllLoopBtn.onclick = () => {
+  const isAllLooping = tracks.every(track => track.isLooping);
+  tracks.forEach(track => {
+    track.isLooping = !isAllLooping;
+    track.loopBtn.textContent = track.isLooping ? '🔁 Loop ON' : '🔁 Loop OFF';
+  });
+  toggleAllLoopBtn.textContent = isAllLooping ? '🔁 All Loop OFF' : '🔁 All Loop ON';
+};
+
+globalVolumeSlider.oninput = () => {
+  globalGainNode.gain.value = parseFloat(globalVolumeSlider.value);
+};
+
+dropzone.addEventListener('dragover', (e) => {
+  e.preventDefault();
+});
+dropzone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  for (const file of e.dataTransfer.files) {
+    if (file.type.startsWith('audio/')) createTrack(file);
+  }
+});
+fileSelect.onclick = () => fileInput.click();
+fileInput.onchange = () => {
+  for (const file of fileInput.files) {
+    if (file.type.startsWith('audio/')) createTrack(file);
+  }
+};
+recordBtn.onclick = () => {
+  if (!isRecording) {
+    startRecording();
+    recordBtn.textContent = '⏹️ Stop Recording';
+  } else {
+    stopRecording();
+    recordBtn.textContent = '⏺️ Start Recording';
+  }
+  isRecording = !isRecording;
+};
+</script>
+
+</body>
+</html>
