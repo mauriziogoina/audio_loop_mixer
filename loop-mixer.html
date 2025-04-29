@@ -136,146 +136,165 @@ function createTrack(file) {
   const reader = new FileReader();
   reader.onload = async function(ev) {
     const arrayBuffer = ev.target.result;
-    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
 
-    const container = document.createElement('div');
-    container.className = 'audio-track';
-    container.style.background = alternatingColor();
+    try {
+      const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
 
-    const title = document.createElement('h3');
-    title.textContent = file.name;
+      const container = document.createElement('div');
+      container.className = 'audio-track';
+      container.style.background = alternatingColor();
 
-    const volume = document.createElement('input');
-    volume.type = 'range';
-    volume.min = 0;
-    volume.max = 2;
-    volume.step = 0.01;
-    volume.value = 1;
-    volume.className = 'slider';
+      const title = document.createElement('h3');
+      title.textContent = file.name;
 
-    const startSlider = document.createElement('input');
-    startSlider.type = 'range';
-    startSlider.className = 'slider';
-    startSlider.min = 0;
-    startSlider.max = audioBuffer.duration;
-    startSlider.step = 0.01;
-    startSlider.value = 0;
+      const volume = document.createElement('input');
+      volume.type = 'range';
+      volume.min = 0;
+      volume.max = 2;
+      volume.step = 0.01;
+      volume.value = 1;
+      volume.className = 'slider';
 
-    const endSlider = document.createElement('input');
-    endSlider.type = 'range';
-    endSlider.className = 'slider';
-    endSlider.min = 0;
-    endSlider.max = audioBuffer.duration;
-    endSlider.step = 0.01;
-    endSlider.value = audioBuffer.duration;
+      const startSlider = document.createElement('input');
+      startSlider.type = 'range';
+      startSlider.className = 'slider';
+      startSlider.min = 0;
+      startSlider.max = audioBuffer.duration;
+      startSlider.step = 0.01;
+      startSlider.value = 0;
 
-    const playBtn = document.createElement('button');
-    playBtn.textContent = '▶️ Play';
+      const endSlider = document.createElement('input');
+      endSlider.type = 'range';
+      endSlider.className = 'slider';
+      endSlider.min = 0;
+      endSlider.max = audioBuffer.duration;
+      endSlider.step = 0.01;
+      endSlider.value = audioBuffer.duration;
 
-    const stopBtn = document.createElement('button');
-    stopBtn.textContent = '⏹️ Stop';
-    stopBtn.className = 'stop';
+      const playBtn = document.createElement('button');
+      playBtn.textContent = '▶️ Play';
 
-    const loopBtn = document.createElement('button');
-    loopBtn.textContent = '🔁 Loop OFF';
-    loopBtn.className = 'toggle-loop';
+      const stopBtn = document.createElement('button');
+      stopBtn.textContent = '⏹️ Stop';
+      stopBtn.className = 'stop';
 
-    const soloBtn = document.createElement('button');
-    soloBtn.textContent = '🎧 Solo';
-    soloBtn.className = 'solo';
+      const loopBtn = document.createElement('button');
+      loopBtn.textContent = '🔁 Loop OFF';
+      loopBtn.className = 'toggle-loop';
 
-    const deleteBtn = document.createElement('button');
-    deleteBtn.textContent = '🗑️ Delete';
-    deleteBtn.className = 'delete';
+      const soloBtn = document.createElement('button');
+      soloBtn.textContent = '🎧 Solo';
+      soloBtn.className = 'solo';
 
-    container.append(title, volume, startSlider, endSlider, playBtn, stopBtn, loopBtn, soloBtn, deleteBtn);
-    trackList.appendChild(container);
+      const deleteBtn = document.createElement('button');
+      deleteBtn.textContent = '🗑️ Delete';
+      deleteBtn.className = 'delete';
 
-    const track = {
-      audioBuffer,
-      gainNode: audioCtx.createGain(),
-      volume,
-      startSlider,
-      endSlider,
-      loopBtn,
-      soloBtn,
-      source: null,
-      container,
-      isLooping: false,
-      isSolo: false
-    };
-    track.gainNode.connect(globalGainNode);
+      container.append(title, volume, startSlider, endSlider, playBtn, stopBtn, loopBtn, soloBtn, deleteBtn);
+      trackList.appendChild(container);
 
-    function createSource() {
-      const source = audioCtx.createBufferSource();
-      source.buffer = track.audioBuffer;
-      source.connect(track.gainNode);
-      source.loop = track.isLooping;
-      source.loopStart = parseFloat(track.startSlider.value);
-      source.loopEnd = parseFloat(track.endSlider.value);
-      return source;
+      const track = {
+        audioBuffer,
+        gainNode: audioCtx.createGain(),
+        volume,
+        startSlider,
+        endSlider,
+        loopBtn,
+        soloBtn,
+        source: null,
+        container,
+        isLooping: false,
+        isSolo: false
+      };
+      track.gainNode.connect(globalGainNode);
+
+      function createSource() {
+        const source = audioCtx.createBufferSource();
+        source.buffer = track.audioBuffer;
+        source.connect(track.gainNode);
+        source.loop = track.isLooping;
+        source.loopStart = parseFloat(track.startSlider.value);
+        source.loopEnd = parseFloat(track.endSlider.value);
+        return source;
+      }
+
+      playBtn.onclick = () => {
+        if (track.source) track.source.stop();
+        track.source = createSource();
+        track.gainNode.gain.value = parseFloat(track.volume.value);
+        track.source.start(0, parseFloat(track.startSlider.value));
+      };
+
+      stopBtn.onclick = () => {
+        if (track.source) track.source.stop();
+      };
+
+      loopBtn.onclick = () => {
+        track.isLooping = !track.isLooping;
+        loopBtn.textContent = track.isLooping ? '🔁 Loop ON' : '🔁 Loop OFF';
+      };
+
+      soloBtn.onclick = () => {
+        tracks.forEach(t => {
+          t.gainNode.gain.value = (t === track && !track.isSolo) ? 1 : 0;
+          t.isSolo = false;
+        });
+        track.isSolo = !track.isSolo;
+      };
+
+      deleteBtn.onclick = () => {
+        if (track.source) track.source.stop();
+        track.gainNode.disconnect();
+        container.remove();
+        const index = tracks.indexOf(track);
+        if (index !== -1) tracks.splice(index, 1);
+      };
+
+      volume.oninput = () => {
+        track.gainNode.gain.value = parseFloat(track.volume.value);
+      };
+
+      startSlider.oninput = () => {
+        if (parseFloat(startSlider.value) > parseFloat(endSlider.value)) {
+          endSlider.value = startSlider.value;
+        }
+        if (track.source) {
+          track.source.loopStart = parseFloat(track.startSlider.value);
+          track.source.loopEnd = parseFloat(track.endSlider.value);
+        }
+      };
+
+      endSlider.oninput = () => {
+        if (parseFloat(endSlider.value) < parseFloat(startSlider.value)) {
+          startSlider.value = endSlider.value;
+        }
+        if (track.source) {
+          track.source.loopStart = parseFloat(track.startSlider.value);
+          track.source.loopEnd = parseFloat(track.endSlider.value);
+        }
+      };
+
+      tracks.push(track);
+    } catch (e) {
+      // Fallback: use <audio> element if decodeAudioData fails (e.g. non-decodable .webm)
+      const audioURL = URL.createObjectURL(file);
+      const audio = new Audio(audioURL);
+      audio.controls = true;
+
+      const container = document.createElement('div');
+      container.className = 'audio-track';
+      container.style.background = alternatingColor();
+
+      const title = document.createElement('h3');
+      title.textContent = file.name + ' (basic playback only)';
+      container.appendChild(title);
+      container.appendChild(audio);
+      trackList.appendChild(container);
     }
-
-    playBtn.onclick = () => {
-      if (track.source) track.source.stop();
-      track.source = createSource();
-      track.gainNode.gain.value = parseFloat(track.volume.value);
-      track.source.start(0, parseFloat(track.startSlider.value));
-    };
-
-    stopBtn.onclick = () => {
-      if (track.source) track.source.stop();
-    };
-
-    loopBtn.onclick = () => {
-      track.isLooping = !track.isLooping;
-      loopBtn.textContent = track.isLooping ? '🔁 Loop ON' : '🔁 Loop OFF';
-    };
-
-    soloBtn.onclick = () => {
-      tracks.forEach(t => {
-        t.gainNode.gain.value = (t === track && !track.isSolo) ? 1 : 0;
-        t.isSolo = false;
-      });
-      track.isSolo = !track.isSolo;
-    };
-
-    deleteBtn.onclick = () => {
-      if (track.source) track.source.stop();
-      track.gainNode.disconnect();
-      container.remove();
-      const index = tracks.indexOf(track);
-      if (index !== -1) tracks.splice(index, 1);
-    };
-
-    volume.oninput = () => {
-      track.gainNode.gain.value = parseFloat(track.volume.value);
-    };
-
-    startSlider.oninput = () => {
-      if (parseFloat(startSlider.value) > parseFloat(endSlider.value)) {
-        endSlider.value = startSlider.value;
-      }
-      if (track.source) {
-        track.source.loopStart = parseFloat(track.startSlider.value);
-        track.source.loopEnd = parseFloat(track.endSlider.value);
-      }
-    };
-
-    endSlider.oninput = () => {
-      if (parseFloat(endSlider.value) < parseFloat(startSlider.value)) {
-        startSlider.value = endSlider.value;
-      }
-      if (track.source) {
-        track.source.loopStart = parseFloat(track.startSlider.value);
-        track.source.loopEnd = parseFloat(track.endSlider.value);
-      }
-    };
-
-    tracks.push(track);
   };
   reader.readAsArrayBuffer(file);
 }
+
 
 function startRecording() {
   const dest = audioCtx.createMediaStreamDestination();
@@ -346,15 +365,21 @@ dropzone.addEventListener('dragover', (e) => {
 dropzone.addEventListener('drop', (e) => {
   e.preventDefault();
   for (const file of e.dataTransfer.files) {
-    if (file.type.startsWith('audio/')) createTrack(file);
+    if (file.type.startsWith('audio/') || file.name.endsWith('.webm')) {
+      createTrack(file);
+    }
   }
 });
+
 fileSelect.onclick = () => fileInput.click();
 fileInput.onchange = () => {
   for (const file of fileInput.files) {
-    if (file.type.startsWith('audio/')) createTrack(file);
+    if (file.type.startsWith('audio/') || file.name.endsWith('.webm')) {
+      createTrack(file);
+    }
   }
 };
+
 recordBtn.onclick = () => {
   if (!isRecording) {
     startRecording();
@@ -369,3 +394,4 @@ recordBtn.onclick = () => {
 
 </body>
 </html>
+
